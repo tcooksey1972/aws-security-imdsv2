@@ -1,0 +1,121 @@
+name: Deploy IMDSv2 Guard Hook
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: Package Guard Rules
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Package Guard rules
+        run: |
+          mkdir -p dist
+          zip -r dist/imdsv2-rules.zip guard-rules/ec2-imdsv2.guard
+      
+      - name: Upload packaged rules as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: imdsv2-rules
+          path: dist/imdsv2-rules.zip
+  
+  deploy-dev:
+    name: Deploy to Development
+    needs: package
+    runs-on: ubuntu-latest
+    environment: development
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Download packaged rules
+        uses: actions/download-artifact@v3
+        with:
+          name: imdsv2-rules
+          path: dist
+      
+      - name: Upload rules to S3
+        run: |
+          aws s3 cp dist/imdsv2-rules.zip s3://${{ secrets.S3_BUCKET }}/guardhooks/imdsv2-rules-${{ github.sha }}.zip
+      
+      - name: Deploy Guard Hook
+        run: |
+          aws cloudformation deploy \
+            --stack-name imdsv2-guard-hook-dev \
+            --template-file deployment/guardhook-template.yaml \
+            --parameter-overrides \
+              GuardRulesBucket=${{ secrets.S3_BUCKET }} \
+              GuardRulesKey=guardhooks/imdsv2-rules-${{ github.sha }}.zip \
+              HookName=Development::EC2::IMDSv2Enforcement \
+              FailureMode=WARN \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+
+  deploy-prod:
+    name: Deploy to Production
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      
+      - name: Download packaged rules
+        uses: actions/download-artifact@v3
+        with:
+          name: imdsv2-rules
+          path: dist
+      
+      - name: Upload rules to S3
+        run: |
+          aws s3 cp dist/imdsv2-rules.zip s3://${{ secrets.S3_BUCKET }}/guardhooks/imdsv2-rules-${{ github.sha }}.zip
+      
+      - name: Deploy Guard Hook
+        id: deploy
+        run: |
+          STACK_ID=$(aws cloudformation deploy \
+            --stack-name imdsv2-guard-hook-prod \
+            --template-file deployment/guardhook-template.yaml \
+            --parameter-overrides \
+              GuardRulesBucket=${{ secrets.S3_BUCKET }} \
+              GuardRulesKey=guardhooks/imdsv2-rules-${{ github.sha }}.zip \
+              HookName=Security::EC2::IMDSv2Enforcement \
+              FailureMode=FAIL \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset)
+          
+          echo "url=https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/stackinfo?stackId=${STACK_ID}" >> $GITHUB_OUTPUT
+      
+      - name: Deploy Organization-wide (Optional)
+        if: ${{ secrets.DEPLOY_TO_ORG == 'true' }}
+        run: |
+          aws cloudformation deploy \
+            --stack-name imdsv2-hook-org-deployment \
+            --template-file deployment/org-deployment.yaml \
+            --parameter-overrides \
+              HookName=Security::EC2::IMDSv2Enforcement \
+              TargetOUs=${{ secrets.TARGET_OUS }} \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset

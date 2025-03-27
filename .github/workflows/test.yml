@@ -1,0 +1,30 @@
+name: Test IMDSv2 Guard Rules
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Guard Rules
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install CloudFormation Guard
+        run: |
+          pip install cloudformation-guard
+      
+      - name: Run tests
+        run: |
+          cfn-guard validate -r guard-rules/ec2-imdsv2.guard -d guard-rules/test/ec2-imdsv2-pass.json
+          cfn-guard validate -r guard-rules/ec2-imdsv2.guard -d guard-rules/test/ec2-imdsv2-fail.json -i

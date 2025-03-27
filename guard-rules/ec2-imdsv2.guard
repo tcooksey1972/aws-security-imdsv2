@@ -1,0 +1,57 @@
+# Guard rule to enforce IMDSv2 for EC2 instances
+# All EC2 instances must have MetadataOptions with HttpTokens = "required"
+
+#
+# Rule for EC2 instances
+#
+rule ec2_instance_imdsv2 {
+  Resources.*[ Type == "AWS::EC2::Instance" ] {
+    Properties {
+      # Enforce that MetadataOptions exists
+      MetadataOptions exists
+      MetadataOptions is_struct
+      
+      # Enforce that HttpTokens is set to required
+      MetadataOptions.HttpTokens exists
+      MetadataOptions.HttpTokens == "required" <<EC2 instances must use IMDSv2 (HttpTokens = required)>>
+    }
+  }
+}
+
+#
+# Rule for Launch Templates
+#
+rule launch_template_imdsv2 {
+  Resources.*[ Type == "AWS::EC2::LaunchTemplate" ] {
+    Properties {
+      # Ensure LaunchTemplateData exists
+      LaunchTemplateData exists
+      LaunchTemplateData is_struct
+      
+      # Ensure metadata options exist
+      LaunchTemplateData.MetadataOptions exists
+      LaunchTemplateData.MetadataOptions is_struct
+      
+      # Enforce that HttpTokens is set to required
+      LaunchTemplateData.MetadataOptions.HttpTokens exists
+      LaunchTemplateData.MetadataOptions.HttpTokens == "required" <<Launch Templates must use IMDSv2 (HttpTokens = required)>>
+    }
+  }
+}
+
+#
+# Rule for Launch Configurations (AutoScaling)
+#
+rule launch_configuration_imdsv2 {
+  Resources.*[ Type == "AWS::AutoScaling::LaunchConfiguration" ] {
+    Properties {
+      # Ensure metadata options exist
+      MetadataOptions exists
+      MetadataOptions is_struct
+      
+      # Enforce that HttpTokens is set to required
+      MetadataOptions.HttpTokens exists
+      MetadataOptions.HttpTokens == "required" <<Launch Configurations must use IMDSv2 (HttpTokens = required)>>
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "Resources": {
+    "EC2InstanceMissingMetadataOptions": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": "t3.micro",
+        "ImageId": "ami-12345678"
+      }
+    },
+    "EC2InstanceWithIMDSv1": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": "t3.micro",
+        "ImageId": "ami-12345678",
+        "MetadataOptions": {
+          "HttpTokens": "optional",
+          "HttpEndpoint": "enabled"
+        }
+      }
+    },
+    "LaunchTemplateWithIMDSv1": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateName": "template-with-imdsv1",
+        "LaunchTemplateData": {
+          "InstanceType": "t3.micro",
+          "MetadataOptions": {
+            "HttpTokens": "optional",
+            "HttpEndpoint": "enabled"
+          }
+        }
+      }
+    },
+    "LaunchConfigurationWithIMDSv1": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "LaunchConfigurationName": "asg-with-imdsv1",
+        "InstanceType": "t3.micro",
+        "ImageId": "ami-12345678",
+        "MetadataOptions": {
+          "HttpTokens": "optional",
+          "HttpEndpoint": "enabled"
+        }
+      }
+    }
+  }
+}

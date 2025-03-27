@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploys the IMDSv2 enforcement Guard Hook across the organization'
+
+Parameters:
+  HookName:
+    Type: String
+    Default: 'Security::EC2::IMDSv2Enforcement'
+    Description: The name of the Guard Hook to deploy
+  
+  TargetOUs:
+    Type: CommaDelimitedList
+    Description: List of Organizational Unit IDs to deploy the hook to
+    Default: 'ou-abcd-1example,ou-efgh-2example'
+  
+  StackSetAdminRole:
+    Type: String
+    Default: 'AWSCloudFormationStackSetAdministrationRole'
+    Description: The IAM role that CloudFormation assumes to perform stack set operations
+  
+  StackSetExecutionRole:
+    Type: String
+    Default: 'AWSCloudFormationStackSetExecutionRole'
+    Description: The IAM role in target accounts that CloudFormation assumes to perform stack operations
+
+Resources:
+  # StackSets for deploying hook configuration to member accounts
+  HookConfigurationStackSet:
+    Type: AWS::CloudFormation::StackSet
+    Properties:
+      StackSetName: imdsv2-guard-hook-configuration
+      Description: Configures the IMDSv2 enforcement Guard Hook in member accounts
+      PermissionModel: SERVICE_MANAGED
+      AutoDeployment:
+        Enabled: true
+        RetainStacksOnAccountRemoval: false
+      OperationPreferences:
+        FailureTolerancePercentage: 20
+        MaxConcurrentPercentage: 25
+      TemplateBody: !Sub |
+        AWSTemplateFormatVersion: '2010-09-09'
+        Description: Configures the IMDSv2 enforcement Guard Hook in a member account
+        
+        Resources:
+          # Configure the hook in the member account
+          HookTypeConfig:
+            Type: AWS::CloudFormation::HookTypeConfig
+            Properties:
+              TypeName: ${HookName}
+              Configuration: !Sub |
+                {
+                  "CloudFormationConfiguration": {
+                    "HookConfiguration": {
+                      "TargetStacks": "ALL",
+                      "FailureMode": "FAIL",
+                      "Properties": {}
+                    }
+                  }
+                }
+        
+        Outputs:
+          HookConfigurationStatus:
+            Description: Status of the hook configuration
+            Value: !Ref HookTypeConfig
+      
+      # Deploy to organization units
+      OrganizationalUnitIds: !Ref TargetOUs
+
+Outputs:
+  StackSetId:
+    Description: ID of the StackSet used for hook deployment
+    Value: !Ref HookConfigurationStackSet

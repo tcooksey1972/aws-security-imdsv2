@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploys an AWS CloudFormation Guard Hook to enforce IMDSv2 requirements'
+
+Parameters:
+  GuardRulesBucket:
+    Type: String
+    Description: The S3 bucket where the Guard rules are stored
+  
+  GuardRulesKey:
+    Type: String
+    Description: The S3 key for the Guard rules file or archive
+  
+  HookName:
+    Type: String
+    Default: 'Security::EC2::IMDSv2Enforcement'
+    Description: The name for the Guard Hook (follows Provider::Service::Hook format)
+    AllowedPattern: '^(?!(?i)aws)[A-Za-z0-9]{2,64}::[A-Za-z0-9]{2,64}::[A-Za-z0-9]{2,64}$'
+  
+  FailureMode:
+    Type: String
+    Default: 'FAIL'
+    AllowedValues:
+      - 'FAIL'
+      - 'WARN'
+    Description: How the hook should respond when rules fail evaluation
+  
+  LogBucket:
+    Type: String
+    Description: S3 bucket to store detailed Guard evaluation logs (optional)
+    Default: ''
+
+Conditions:
+  HasLogBucket: !Not [!Equals [!Ref LogBucket, '']]
+
+Resources:
+  # IAM Role for the Hook to access S3
+  GuardHookExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: hooks.cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCloudFormationHooksExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${GuardRulesBucket}/${GuardRulesKey}'
+              - Fn::If:
+                - HasLogBucket
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                  Resource: !Sub 'arn:aws:s3:::${LogBucket}/*'
+                - Ref: AWS::NoValue
+
+  # The Guard Hook
+  IMDSv2GuardHook:
+    Type: AWS::CloudFormation::GuardHook
+    Properties:
+      Alias: !Ref HookName
+      ExecutionRole: !GetAtt GuardHookExecutionRole.Arn
+      FailureMode: !Ref FailureMode
+      RuleLocation:
+        S3Location:
+          Bucket: !Ref GuardRulesBucket
+          Key: !Ref GuardRulesKey
+      LogBucket: !If [HasLogBucket, !Ref LogBucket, !Ref 'AWS::NoValue']
+      TargetOperations:
+        - 'RESOURCE'
+        - 'STACK'
+        - 'CLOUD_CONTROL'
+      TargetFilters:
+        ResourceTypes:
+          - 'AWS::EC2::Instance'
+          - 'AWS::EC2::LaunchTemplate'
+          - 'AWS::AutoScaling::LaunchConfiguration'
+
+Outputs:
+  HookName:
+    Description: The name of the deployed Guard Hook
+    Value: !Ref HookName
+  
+  ExecutionRoleArn:
+    Description: The ARN of the IAM role used by the hook
+    Value: !GetAtt GuardHookExecutionRole.Arn

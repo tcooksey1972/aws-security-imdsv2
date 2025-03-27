@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Execution Role for CloudFormation Guard Hook'
+
+Parameters:
+  RoleName:
+    Type: String
+    Default: 'CFNGuardHookExecutionRole'
+    Description: Name for the IAM execution role
+  
+  S3BucketArn:
+    Type: String
+    Description: ARN of the S3 bucket containing Guard rules
+  
+  LogBucketArn:
+    Type: String
+    Description: ARN of the S3 bucket for storing hook logs (optional)
+    Default: ''
+
+Conditions:
+  HasLogBucket: !Not [!Equals [!Ref LogBucketArn, '']]
+
+Resources:
+  GuardHookExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: hooks.cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCloudFormationHooksExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref S3BucketArn
+                  - !Sub "${S3BucketArn}/*"
+              - !If
+                - HasLogBucket
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                    - s3:ListBucket
+                  Resource:
+                    - !Ref LogBucketArn
+                    - !Sub "${LogBucketArn}/*"
+                - !Ref AWS::NoValue
+
+Outputs:
+  RoleARN:
+    Description: The ARN of the IAM role
+    Value: !GetAtt GuardHookExecutionRole.Arn
+  
+  RoleName:
+    Description: The name of the IAM role
+    Value: !Ref GuardHookExecutionRole
