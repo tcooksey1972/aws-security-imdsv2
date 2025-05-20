@@ -22,7 +22,9 @@ jobs:
           
       - name: Install CloudFormation Guard
         run: |
-          pip install cloudformation-guard
+          curl -Lo cfn-guard https://github.com/aws-cloudformation/cloudformation-guard/releases/latest/download/cfn-guard-linux
+          chmod +x cfn-guard
+          sudo mv cfn-guard /usr/local/bin/
       
       - name: Run tests
         run: |
